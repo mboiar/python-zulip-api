@@ -1,0 +1,1 @@
+A Zulip bot that randomly picks two stream members to review a merge request.
