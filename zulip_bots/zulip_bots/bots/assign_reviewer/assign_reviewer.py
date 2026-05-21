@@ -130,10 +130,12 @@ class ReviewAssignerHandler:
             if result["result"] != "success":
                 logger.error("Failed to get subscribers: %s", result.get("msg"))
                 return None
-            all_members.append(result["subscribers"])
+            print(result)
+            all_members = result["subscribers"]
         except Exception:
             logger.exception("Exception fetching stream subscribers")
             return None
+        print(all_members, reviewer_names)
 
         return [usr for usr in all_members if usr["full_name"] in reviewer_names]
 
