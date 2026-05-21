@@ -126,12 +126,12 @@ class ReviewAssignerHandler:
         all_members = []
 
         try:
-            result = client.get_subscribers(stream=stream_name)
+            result = client.get_members()
             if result["result"] != "success":
                 logger.error("Failed to get subscribers: %s", result.get("msg"))
                 return None
             print(result)
-            all_members = result["subscribers"]
+            all_members = result["members"]
         except Exception:
             logger.exception("Exception fetching stream subscribers")
             return None
