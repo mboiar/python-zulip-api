@@ -1,6 +1,8 @@
 from typing import Any, Dict, Optional, List, Set
 import random
 import logging
+import json
+import os
 
 import zulip
 from zulip_bots.lib import AbstractBotHandler
@@ -64,7 +66,7 @@ class ReviewAssignerHandler:
         if self._bot_full_name is not None:
             return
         try:
-            client = bot_handler._client  # access the underlying Zulip client
+            client = bot_handler._client
             profile = client.get_profile()
             if profile["result"] == "success":
                 self._bot_full_name = profile["full_name"]
@@ -75,24 +77,70 @@ class ReviewAssignerHandler:
         except Exception:
             logger.exception("Cannot initialize bot identity")
 
-    def _get_stream_subscribers(
+    def _get_reviewers(
         self, client: zulip.Client, stream_name: str
-    ) -> Optional[List[int]]:
-        """Return list of user IDs subscribed to the given stream."""
+    ) -> Optional[List[Dict]]:
+        """Load list of user IDs for `stream_name` from an external JSON file.
+
+        The JSON file should be a mapping of stream names to lists of user IDs, e.g.
+        {
+            "": ["John Doe", "Jan Paweł"],
+        }
+
+        The default file is `reviewers.json` next to this module. You
+        can override it by setting the environment variable `REVIEWERS_FILE`.
+        """
+        # Determine config path
+        cfg_path = os.environ.get(
+            "ASSIGN_REVIEW_MEMBERS",
+            os.path.join(os.path.dirname(__file__), "reviewers.json"),
+        )
+        try:
+            with open(cfg_path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+        except FileNotFoundError:
+            logger.error("Members config file not found: %s", cfg_path)
+            return None
+        except Exception:
+            logger.exception("Failed to load members config: %s", cfg_path)
+            return None
+
+        # If config is a single list, use it for all streams
+        if isinstance(data, list):
+            try:
+                return [int(x) for x in data]
+            except Exception:
+                logger.exception("Invalid member IDs in members config list")
+                return None
+
+        # Expect mapping of stream -> list
+        if not isinstance(data, dict):
+            logger.error("Members config must be a dict or list: %s", type(data))
+            return None
+
+        reviewer_names = data.get(stream_name)
+        if reviewer_names is None:
+            logger.error("No member list for stream '%s' in %s", stream_name, cfg_path)
+            return None
+        
+        all_members = []
+
         try:
             result = client.get_subscribers(stream=stream_name)
             if result["result"] != "success":
                 logger.error("Failed to get subscribers: %s", result.get("msg"))
                 return None
-            return result["subscribers"]
+            all_members = result["subscribers"]
         except Exception:
             logger.exception("Exception fetching stream subscribers")
             return None
 
+        return [usr for usr in all_members if usr["full_name"] in reviewer_names]
+
     def _pick_two(self, members: List[Dict], exclude: Set[int]) -> List[int]:
-        candidates = [p for p in members if (p not in exclude)]
+        candidates = [p for p in members if (p["user_id"] not in exclude)]
         if len(candidates) < 2:
-            return candidates  # 0 or 1
+            return candidates
         return random.sample(candidates, 2)
 
     def handle_message(
@@ -119,40 +167,46 @@ class ReviewAssignerHandler:
             return
 
         # # ---------- REVIEW CONFIRMATION ----------
-        # if cmd == "reviewed":
+        if cmd == "reviewed":
         #     parent_id = message.get("reply_to")
-        #     if parent_id and parent_id in self.active_assignments:
-        #         assignment = self.active_assignments[parent_id]
-        #         sender_id = message.get("sender_id")
-        #         if sender_id and sender_id in assignment["assigned"]:
-        #             assignment["assigned"].discard(sender_id)
-        #             if not assignment["assigned"]:
-        #                 del self.active_assignments[parent_id]
+            if len(content_data) < 2:
+                bot_handler.send_reply(message, "Please provide a merge request title. Example:\n"
+                                            "`@**ReviewAssigner** reviewed add dark mode`")
+                return
 
-        #             counts = self._get_review_counts(bot_handler)
-        #             counts[sender_id] = counts.get(sender_id, 0) + 1
-        #             self._save_review_counts(bot_handler, counts)
+            mr_title = content_data[1]
+            if mr_title in self.active_assignments:
+                assignment = self.active_assignments[mr_title]
+                sender_id = message.get("sender_id")
+                if sender_id:
+                    assignment["review_count"] += 1
+                    if assignment["review_count"] == 2:
+                        del self.active_assignments[mr_title]
 
-        #             bot_handler.send_reply(
-        #                 message,
-        #                 f"✅ Thanks @_**{sender_id}** for reviewing **{assignment['mr_title']}**! "
-        #                 f"(You now have {counts[sender_id]} review{'s' if counts[sender_id] != 1 else ''})"
-        #             )
-        #         else:
-        #             bot_handler.send_reply(message, "You weren't assigned to review this MR, but thanks anyway! 🙂")
-        #         return
-        #     return
+                    counts = self._get_review_counts(bot_handler)
+                    counts[sender_id] = counts.get(sender_id, 0) + 1
+                    self._save_review_counts(bot_handler, counts)
+
+                    bot_handler.send_reply(
+                        message,
+                        f"✅ Thanks @_**{sender_id}** for reviewing **{assignment['mr_title']}**! "
+                        f"(You now have {counts[sender_id]} review{'s' if counts[sender_id] != 1 else ''})"
+                    )
+            else:
+                bot_handler.send_reply(message, "Merge request does not exist")
+            return
 
         # ---------- LEADERBOARD ----------
         if cmd == "leaderboard":
+            stream_name = message.get("display_recipient")
             self._show_leaderboard(message, bot_handler, stream_name)
             return
        
         if cmd == "assign":
 
             if len(content_data) < 2:
-                bot_handler.send_reply(message, "Please provide a merge request title. Example:\n"
-                                            "`@**ReviewAssigner** assign add dark mode`")
+                bot_handler.send_reply(message, "Please provide a merge request id. Example:\n"
+                                            "`@**ReviewAssigner** assign 73`")
                 return
 
             mr_title = content_data[1]
@@ -165,7 +219,7 @@ class ReviewAssignerHandler:
 
             # Fetch subscribers of this stream
             client = bot_handler._client
-            members = self._get_stream_subscribers(client, stream_name)
+            members = self._get_reviewers(client, stream_name)
             if not members:
                 bot_handler.send_reply(
                     message,
@@ -174,9 +228,8 @@ class ReviewAssignerHandler:
                 return
 
             # Decide who to exclude (always exclude the bot itself, maybe the sender)
-            exclude = {self._bot_user_id}
+            exclude = {self._bot_user_id} if self._bot_user_id is not None else set()
             if message.get("sender_id") and message["sender_id"] != self._bot_user_id:
-                # Exclude the person who triggered the bot (optional; remove line if not desired)
                 exclude.add(message["sender_id"])
 
             chosen = self._pick_two(members, exclude)
@@ -185,18 +238,18 @@ class ReviewAssignerHandler:
                 return
             # logger.debug(f"{[client.get_user_by_id(m).get("user").get("full_name") for m in members]}")
             # Silent mentions using user IDs
-            mentions = " ".join(f"@_**{client.get_user_by_id(m).get("user").get("full_name")}**" for m in chosen)
+            mentions = " ".join(f"@_**{m["full_name"]}**" for m in chosen)
             ps = random.choice(PHRASES)
             reply = f"Reviewers for **{mr_title}**: {mentions}\n*{ps}*"
 
             resp = bot_handler.send_reply(message, reply)
-            if isinstance(resp, dict) and resp.get("id"):
-                self.active_assignments[resp["id"]] = {
+            self.active_assignments[mr_title] = {
                     "assigned": set(chosen),
                     "stream": stream_name,
                     "mr_title": mr_title,
                     "topic": message.get("subject", ""),
-                }
+                    "review_count": 0
+            }
             return
         
         bot_handler.send_reply(message, self.usage())
