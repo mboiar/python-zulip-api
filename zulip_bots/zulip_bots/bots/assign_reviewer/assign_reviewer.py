@@ -75,10 +75,10 @@ class ReviewAssignerHandler:
          return """
             I randomly assign two stream members to review a merge request.
 
-            • **@ReviewAssigner Bot assign title** - picks two random reviewers for *title*
-            • **@ReviewAssigner Bot reviewed title** - lets me know that you reviewed *title*
-            • **@ReviewAssigner Bot leaderboard - shows top reviewers (resets every month)
-            • **@ReviewAssigner Bot list - lists merge requests to be reviewed
+            • **@ReviewBot assign title** - picks two random reviewers for *title*
+            • **@ReviewBot reviewed title** - lets me know that you reviewed *title*
+            • **@ReviewBot leaderboard - shows top reviewers (resets every month)
+            • **@ReviewBot list - lists merge requests to be reviewed
                                 """
 
     def _init_identity(self, bot_handler: AbstractBotHandler) -> None:
@@ -308,7 +308,7 @@ class ReviewAssignerHandler:
             return
         
         if cmd == "list":
-            self.send_active_merge_requests(bot_handler)
+            self.send_active_merge_requests(message, bot_handler)
             return
 
         bot_handler.send_reply(message, self.usage())
