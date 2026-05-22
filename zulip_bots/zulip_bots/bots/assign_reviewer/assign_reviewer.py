@@ -3,6 +3,7 @@ import random
 import logging
 import json
 import os
+from datetime import datetime
 
 import zulip
 from zulip_bots.lib import AbstractBotHandler
@@ -58,13 +59,27 @@ class ReviewAssignerHandler:
     def _save_review_counts(self, bot_handler, counts: Dict[int, int]) -> None:
         data = json.dumps(counts)
         bot_handler.storage.put("review_counts", data)
+    
+    def _get_last_reset_date(self, bot_handler) -> str:
+            """Retrieve last reset date from persistent storage."""
+            try:
+                data = bot_handler.storage.get("last_reset_date")
+            except KeyError:
+                return "01-1970"
+            return data
 
+    def _save_last_reset_date(self, bot_handler, date: str) -> None:
+        bot_handler.storage.put("last_reset_date", date)
+    
     def usage(self) -> str:
          return """
             I randomly assign two stream members to review a merge request.
 
             • **@ReviewAssigner Bot assign title** - picks two random reviewers for *title*
-        """
+            • **@ReviewAssigner Bot reviewed title** - lets me know that you reviewed *title*
+            • **@ReviewAssigner Bot leaderboard - shows top reviewers (resets every month)
+            • **@ReviewAssigner Bot list - lists merge requests to be reviewed
+                                """
 
     def _init_identity(self, bot_handler: AbstractBotHandler) -> None:
         """Fetch and cache the bot's own full name and user ID."""
@@ -167,6 +182,12 @@ class ReviewAssignerHandler:
         content_data = content.split(maxsplit=1)
         cmd = content_data[0].lower()
         client = bot_handler._client
+        last_reset_date = self._get_last_reset_date(bot_handler)
+        cur_date = datetime.now().strftime("%m-%Y")
+
+        if cur_date != last_reset_date:
+            self._save_review_counts(bot_handler, {})
+            self._save_last_reset_date(cur_date)
 
         # Make sure we know who we are
         self._init_identity(bot_handler)
@@ -222,7 +243,8 @@ class ReviewAssignerHandler:
                     )
                     if ready_to_merge:
                         bot_handler.send_reply(message, f"MR {mr_title}: ready to merge")
-                bot_handler.send_reply(message, "Could not identify you, sorry")
+                else:
+                    bot_handler.send_reply(message, "Could not identify you, sorry")
             else:
                 bot_handler.send_reply(message, "Merge request does not exist. Review your manners instead.")
             return
@@ -285,6 +307,10 @@ class ReviewAssignerHandler:
                 json.dump(self.active_assignments, fh)
             return
         
+        if cmd == "list":
+            self.send_active_merge_requests(bot_handler)
+            return
+
         bot_handler.send_reply(message, self.usage())
         return
 
@@ -310,6 +336,53 @@ class ReviewAssignerHandler:
         leaderboard_lines.append("")
         leaderboard_lines.append("Reply `reviewed` to an assignment to count your review.")
         bot_handler.send_reply(message, "\n".join(leaderboard_lines))
+
+    def get_active_merge_requests(self) -> List[Dict[str, Any]]:
+        """Return a list of active merge request entries from in-memory cache or file.
+
+        Each entry is a dict with keys: `mr_title`, `assigned`, `stream`, `topic`, `reviewed_by`.
+        """
+        if os.path.exists("active_assignments.json"):
+            try:
+                with open("active_assignments.json", "r", encoding="utf-8") as fh:
+                    self.active_assignments = json.load(fh)
+            except Exception:
+                logger.exception("Failed to load active assignments from file")
+
+        entries: List[Dict[str, Any]] = []
+        for mr_title, data in self.active_assignments.items():
+            entry = {"mr_title": mr_title}
+            if isinstance(data, dict):
+                entry.update(data)
+            entries.append(entry)
+        return entries
+
+    def send_active_merge_requests(self, message, bot_handler) -> None:
+        """Send a human-readable list of active merge requests as a reply to `message`."""
+        entries = self.get_active_merge_requests()
+        if not entries:
+            bot_handler.send_reply(message, "No active merge requests.")
+            return
+
+        client = bot_handler._client
+        lines = ["**Active Merge Requests**", ""]
+        for e in entries:
+            assigned = e.get("assigned", [])
+            names = []
+            for uid in assigned:
+                try:
+                    user = client.get_user_by_id(int(uid))
+                    if user.get("result") == "success":
+                        names.append(user["user"]["full_name"])
+                    else:
+                        names.append(f"User {uid}")
+                except Exception:
+                    names.append(f"User {uid}")
+            name_str = ", ".join(names) if names else "(no one assigned)"
+            stream = e.get("stream", "")
+            lines.append(f"- **{e.get('mr_title')}**: {name_str}")
+
+        bot_handler.send_reply(message, "\n".join(lines))
 
 
 handler_class = ReviewAssignerHandler
