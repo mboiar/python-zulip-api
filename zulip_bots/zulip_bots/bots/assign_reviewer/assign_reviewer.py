@@ -275,8 +275,8 @@ class ReviewAssignerHandler:
         bot_handler.send_reply(message, self.usage())
         return
 
-    def _show_leaderboard(self, message, client, stream_name):
-        counts = self._get_review_counts(client)
+    def _show_leaderboard(self, message, bot_handler, stream_name):
+        counts = self._get_review_counts(bot_handler)
         if not counts:
             bot_handler.send_reply(message, "No reviews completed yet! 😢")
             return
