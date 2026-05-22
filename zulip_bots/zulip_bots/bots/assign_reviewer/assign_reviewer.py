@@ -48,7 +48,7 @@ class ReviewAssignerHandler:
 
     def _get_review_counts(self, bot_handler: AbstractBotHandler) -> Dict[int, int]:
             """Retrieve review counts from persistent storage."""
-            data = bot_handler.storage.get("review_counts", {})
+            data = bot_handler.storage.get("review_counts")
             return {int(k): v for k, v in data.items()} if data else {}
 
     def _save_review_counts(self, bot_handler: AbstractBotHandler, counts: Dict[int, int]) -> None:
@@ -92,7 +92,7 @@ class ReviewAssignerHandler:
         """
         # Determine config path
         cfg_path = os.environ.get(
-            "ASSIGN_REVIEW_MEMBERS",
+            "REVIEWERS_FILE",
             os.path.join(os.path.dirname(__file__), "reviewers.json"),
         )
         try:
@@ -167,31 +167,41 @@ class ReviewAssignerHandler:
         if not self._bot_full_name:
             bot_handler.send_reply(message, "I cannot identify myself - please check the logs.")
             return
+        
+        if os.path.exists("active_assignments.json"):
+            with open("active_assignments.json") as fh:
+                self.active_assignments = json.load(fh)
 
         # # ---------- REVIEW CONFIRMATION ----------
         if cmd == "reviewed":
         #     parent_id = message.get("reply_to")
             if len(content_data) < 2:
                 bot_handler.send_reply(message, "Please provide a merge request title. Example:\n"
-                                            "`@**ReviewAssigner** reviewed add dark mode`")
+                                            "`@**ReviewAssigner** reviewed 73`")
                 return
 
             mr_title = content_data[1]
+            print(self.active_assignments)
             if mr_title in self.active_assignments:
-                assignment = self.active_assignments[mr_title]
                 sender_id = message.get("sender_id")
                 if sender_id:
-                    assignment["review_count"] += 1
-                    if assignment["review_count"] == 2:
+                    self.active_assignments[mr_title]["review_count"] += 1
+                    if self.active_assignments[mr_title]["review_count"] == 2:
                         del self.active_assignments[mr_title]
 
                     counts = self._get_review_counts(bot_handler)
                     counts[sender_id] = counts.get(sender_id, 0) + 1
                     self._save_review_counts(bot_handler, counts)
 
+                    try:
+                        user = client.get_user_by_id(sender_id)
+                        name = user["user"]["full_name"] if user["result"] == "success" else f"User {sender_id}"
+                    except Exception:
+                        name = f"User {sender_id}"
+
                     bot_handler.send_reply(
                         message,
-                        f"✅ Thanks @_**{sender_id}** for reviewing **{assignment['mr_title']}**! "
+                        f"✅ Thanks @_**{name}** for reviewing **{mr_title}**! "
                         f"(You now have {counts[sender_id]} review{'s' if counts[sender_id] != 1 else ''})"
                     )
             else:
@@ -252,6 +262,9 @@ class ReviewAssignerHandler:
                     "topic": message.get("subject", ""),
                     "review_count": 0
             }
+            print(self.active_assignments)
+            with open("active_assignments.json", "w") as fh:
+                json.dump(self.active_assignments, fh)
             return
         
         bot_handler.send_reply(message, self.usage())
