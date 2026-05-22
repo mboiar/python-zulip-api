@@ -150,12 +150,10 @@ class ReviewAssignerHandler:
             if result["result"] != "success":
                 logger.error("Failed to get subscribers: %s", result.get("msg"))
                 return None
-            print(result)
             all_members = result["members"]
         except Exception:
             logger.exception("Exception fetching stream subscribers")
             return None
-        print(all_members, reviewer_names)
 
         return [usr for usr in all_members if usr["full_name"] in reviewer_names]
 
@@ -208,12 +206,12 @@ class ReviewAssignerHandler:
                 return
 
             mr_title = content_data[1]
-            print(self.active_assignments)
+
             if mr_title in self.active_assignments:
                 sender_id = message.get("sender_id")
                 if sender_id:
-                    # if sender_id in self.active_assignments[mr_title]["reviewed_by"]:
-                    #     bot_handler.send_reply(message, "You have already reviewed this MR. Let's hear a second opinion.")
+                    if sender_id in self.active_assignments[mr_title]["reviewed_by"]:
+                        bot_handler.send_reply(message, "You have already reviewed this MR. Let's hear a second opinion.")
                     self.active_assignments[mr_title]["reviewed_by"].append(sender_id)
 
                     ready_to_merge = False
@@ -226,7 +224,6 @@ class ReviewAssignerHandler:
                         json.dump(self.active_assignments, fh)
 
                     counts = self._get_review_counts(bot_handler)
-                    print(counts)
                     counts[str(sender_id)] = counts.get(str(sender_id), 0) + 1
                     self._save_review_counts(bot_handler, counts)
 
@@ -288,7 +285,7 @@ class ReviewAssignerHandler:
             if not chosen:
                 bot_handler.send_reply(message, "Nobody eligible to pick - everyone is excluded.")
                 return
-            # logger.debug(f"{[client.get_user_by_id(m).get("user").get("full_name") for m in members]}")
+
             # Silent mentions using user IDs
             mentions = " ".join(f"@_**{m["full_name"]}**" for m in chosen)
             ps = random.choice(PHRASES)
@@ -302,7 +299,7 @@ class ReviewAssignerHandler:
                     "topic": message.get("subject", ""),
                     "reviewed_by": []
             }
-            print(self.active_assignments)
+
             with open("active_assignments.json", "w") as fh:
                 json.dump(self.active_assignments, fh)
             return
