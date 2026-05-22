@@ -183,7 +183,7 @@ class ReviewAssignerHandler:
         last_reset_date = self._get_last_reset_date(bot_handler)
         cur_date = datetime.now().strftime("%m-%Y")
 
-        if cur_date == last_reset_date:
+        if cur_date != last_reset_date:
             self._save_review_counts(bot_handler, {})
             self._save_last_reset_date(bot_handler, cur_date)
 
