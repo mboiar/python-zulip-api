@@ -166,6 +166,7 @@ class ReviewAssignerHandler:
 
         content_data = content.split(maxsplit=1)
         cmd = content_data[0].lower()
+        client = bot_handler._client
 
         # Make sure we know who we are
         self._init_identity(bot_handler)
@@ -190,12 +191,22 @@ class ReviewAssignerHandler:
             if mr_title in self.active_assignments:
                 sender_id = message.get("sender_id")
                 if sender_id:
-                    self.active_assignments[mr_title]["review_count"] += 1
-                    if self.active_assignments[mr_title]["review_count"] == 2:
+                    # if sender_id in self.active_assignments[mr_title]["reviewed_by"]:
+                    #     bot_handler.send_reply(message, "You have already reviewed this MR. Let's hear a second opinion.")
+                    self.active_assignments[mr_title]["reviewed_by"].append(sender_id)
+
+                    ready_to_merge = False
+
+                    if len(self.active_assignments[mr_title]["reviewed_by"]) == 2:
                         del self.active_assignments[mr_title]
+                        ready_to_merge = True
+
+                    with open("active_assignments.json", "w") as fh:
+                        json.dump(self.active_assignments, fh)
 
                     counts = self._get_review_counts(bot_handler)
-                    counts[sender_id] = counts.get(sender_id, 0) + 1
+                    print(counts)
+                    counts[str(sender_id)] = counts.get(str(sender_id), 0) + 1
                     self._save_review_counts(bot_handler, counts)
 
                     try:
@@ -209,8 +220,11 @@ class ReviewAssignerHandler:
                         f"✅ Thanks @_**{name}** for reviewing **{mr_title}**! "
                         f"(You now have {counts[sender_id]} review{'s' if counts[sender_id] != 1 else ''})"
                     )
+                    if ready_to_merge:
+                        bot_handler.send_reply(message, f"MR {mr_title}: ready to merge")
+                bot_handler.send_reply(message, "Could not identify you, sorry")
             else:
-                bot_handler.send_reply(message, "Merge request does not exist")
+                bot_handler.send_reply(message, "Merge request does not exist. Review your manners instead.")
             return
 
         # ---------- LEADERBOARD ----------
@@ -235,7 +249,6 @@ class ReviewAssignerHandler:
                 return
 
             # Fetch subscribers of this stream
-            client = bot_handler._client
             members = self._get_reviewers(client, stream_name)
             if not members:
                 bot_handler.send_reply(
@@ -265,7 +278,7 @@ class ReviewAssignerHandler:
                     "stream": stream_name,
                     "mr_title": mr_title,
                     "topic": message.get("subject", ""),
-                    "review_count": 0
+                    "reviewed_by": []
             }
             print(self.active_assignments)
             with open("active_assignments.json", "w") as fh:
