@@ -183,7 +183,7 @@ class ReviewAssignerHandler:
         last_reset_date = self._get_last_reset_date(bot_handler)
         cur_date = datetime.now().strftime("%m-%Y")
 
-        if cur_date != last_reset_date:
+        if cur_date == last_reset_date:
             self._save_review_counts(bot_handler, {})
             self._save_last_reset_date(bot_handler, cur_date)
 
@@ -192,7 +192,7 @@ class ReviewAssignerHandler:
         if not self._bot_full_name:
             bot_handler.send_reply(message, "I cannot identify myself - please check the logs.")
             return
-        
+                
         if os.path.exists("active_assignments.json"):
             with open("active_assignments.json") as fh:
                 self.active_assignments = json.load(fh)
@@ -212,6 +212,7 @@ class ReviewAssignerHandler:
                 if sender_id:
                     if sender_id in self.active_assignments[mr_title]["reviewed_by"]:
                         bot_handler.send_reply(message, "You have already reviewed this MR. Let's hear a second opinion.")
+                        return
                     self.active_assignments[mr_title]["reviewed_by"].append(sender_id)
 
                     ready_to_merge = False
