@@ -218,7 +218,7 @@ class ReviewAssignerHandler:
                     bot_handler.send_reply(
                         message,
                         f"✅ Thanks @_**{name}** for reviewing **{mr_title}**! "
-                        f"(You now have {counts[sender_id]} review{'s' if counts[sender_id] != 1 else ''})"
+                        f"(You now have {counts[str(sender_id)]} review{'s' if counts[str(sender_id)] != 1 else ''})"
                     )
                     if ready_to_merge:
                         bot_handler.send_reply(message, f"MR {mr_title}: ready to merge")
