@@ -261,7 +261,7 @@ class ReviewAssignerHandler:
 
             resp = bot_handler.send_reply(message, reply)
             self.active_assignments[mr_title] = {
-                    "assigned": (m["user_id"] for m in chosen),
+                    "assigned": [m["user_id"] for m in chosen],
                     "stream": stream_name,
                     "mr_title": mr_title,
                     "topic": message.get("subject", ""),
