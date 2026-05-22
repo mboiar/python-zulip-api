@@ -46,19 +46,18 @@ class ReviewAssignerHandler:
     _bot_user_id: Optional[int] = None
     active_assignments: Dict[int, Dict[str, Any]] = {}
 
-    def _get_review_counts(self, client) -> Dict[int, int]:
+    def _get_review_counts(self, bot_handler) -> Dict[int, int]:
             """Retrieve review counts from persistent storage."""
-            result = client.get_storage(["review_counts"])
-            if result["result"] == "error":
+            try:
+                data = bot_handler.storage.get("review_counts")
+            except KeyError:
                 return {}
-            else:
-                data = result["storage"]["review_counts"]
-                return {int(k): v for k, v in data.items()}
+            
+            return json.loads(data)
 
-    def _save_review_counts(self, client, counts: Dict[int, int]) -> None:
-        result = client.update_storage({"storage":{"review_counts", counts}})
-        if result["result"] == "error":
-            logger.error(f"{result}")
+    def _save_review_counts(self, bot_handler, counts: Dict[int, int]) -> None:
+        data = json.dumps(counts)
+        bot_handler.storage.put("review_counts", data)
 
     def usage(self) -> str:
          return """
@@ -161,8 +160,6 @@ class ReviewAssignerHandler:
         content = message.get("content", "").strip()
         logger.debug(f"{message}")
 
-        client = bot_handler._client
-
         if content == "":
             bot_handler.send_reply(message, self.usage())
             return
@@ -197,9 +194,9 @@ class ReviewAssignerHandler:
                     if self.active_assignments[mr_title]["review_count"] == 2:
                         del self.active_assignments[mr_title]
 
-                    counts = self._get_review_counts(client)
+                    counts = self._get_review_counts(bot_handler)
                     counts[sender_id] = counts.get(sender_id, 0) + 1
-                    self._save_review_counts(client, counts)
+                    self._save_review_counts(bot_handler, counts)
 
                     try:
                         user = client.get_user_by_id(sender_id)
