@@ -187,7 +187,7 @@ class ReviewAssignerHandler:
 
         if cur_date != last_reset_date:
             self._save_review_counts(bot_handler, {})
-            self._save_last_reset_date(cur_date)
+            self._save_last_reset_date(bot_handler, cur_date)
 
         # Make sure we know who we are
         self._init_identity(bot_handler)
