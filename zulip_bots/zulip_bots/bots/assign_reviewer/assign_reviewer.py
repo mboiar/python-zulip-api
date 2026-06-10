@@ -291,8 +291,8 @@ class ReviewAssignerHandler:
 
             payload = content_data[1].split(" ", maxsplit=1)
             mr_title = payload[0]
-            mr_id = mr_title.split("/")[-1]
-            mr_ids_all =  [str(mr.iid) for mr in mr_list_all]
+            mr_id = int(mr_title.split("/")[-1])
+            mr_ids_all =  [mr.iid for mr in mr_list_all]
             if mr_id not in mr_ids_all:
                 bot_handler.send_reply(message, random.choice(MR_NOT_FOUND_WITTY_REPLIES))
                 return
