@@ -160,7 +160,7 @@ class ReviewAssignerHandler:
             logger.exception("Cannot initialize bot identity")
 
     def _get_reviewers(
-        self, client: zulip.Client, stream_name: str, reviewer_names: Dict[str] = None
+        self, client: zulip.Client, stream_name: str, reviewer_names: List[str] = None
     ) -> Optional[List[Dict]]:
         """Load list of user IDs for `stream_name` from a dict or an external JSON file.
 
