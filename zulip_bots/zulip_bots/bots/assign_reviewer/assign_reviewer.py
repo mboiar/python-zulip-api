@@ -316,8 +316,8 @@ class ReviewAssignerHandler:
 
             # Decide who to exclude (always exclude the bot itself, maybe the sender)
             exclude = {self._bot_user_id} if self._bot_user_id is not None else set()
-            if message.get("sender_id") and message["sender_id"] != self._bot_user_id:
-                exclude.add(message["sender_id"])
+            # if message.get("sender_id") and message["sender_id"] != self._bot_user_id:
+            #     exclude.add(message["sender_id"])
                 
             chosen = self._pick_two(members, exclude)
             if not chosen:
