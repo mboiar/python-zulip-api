@@ -297,7 +297,7 @@ class ReviewAssignerHandler:
                 bot_handler.send_reply(message, random.choice(MR_NOT_FOUND_WITTY_REPLIES))
                 return
 
-            requested_reviewers = re.findall(r"@\*\*(.+?)\*\*", payload[1:])
+            requested_reviewers = re.findall(r"@\*\*(.+?)\*\*", payload[1])
 
             # Get stream and topic where we were called
             stream_name = message.get("display_recipient")
