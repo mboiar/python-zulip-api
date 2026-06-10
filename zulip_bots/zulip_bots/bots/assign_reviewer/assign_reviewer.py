@@ -4,6 +4,7 @@ import logging
 import json
 import os
 from datetime import datetime
+import re
 
 import zulip
 from zulip_bots.lib import AbstractBotHandler
@@ -288,14 +289,15 @@ class ReviewAssignerHandler:
                                             "`@ReviewAssigner assign <link>`")
                 return
 
-            mr_title = content_data[1]
+            payload = content_data.split(" ", maxsplit=1)
+            mr_title = payload[0]
             mr_id = mr_title.split("/")[-1]
             mr_ids_all =  [str(mr.iid) for mr in mr_list_all]
             if mr_id not in mr_ids_all:
                 bot_handler.send_reply(message, random.choice(MR_NOT_FOUND_WITTY_REPLIES))
                 return
 
-            requested_reviewers = content_data[2:]
+            requested_reviewers = re.findall(r"@\*\*(.+?)\*\*", payload[1:])
 
             # Get stream and topic where we were called
             stream_name = message.get("display_recipient")
