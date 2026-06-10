@@ -7,10 +7,16 @@ from datetime import datetime
 
 import zulip
 from zulip_bots.lib import AbstractBotHandler
+import gitlab
 
 __version__ = "1.0.0"
 
 logger = logging.getLogger(__name__)
+gl = gitlab.Gitlab.from_config("satlab", ["python-gitlab.cfg"])
+cfg_path = os.environ.get(
+            "REVIEWERS_FILE",
+            os.path.join(os.path.dirname(__file__), "reviewers.json"),
+        )
 
 PHRASES = [
     "Review responsibly. No dark side stuff.",
@@ -40,12 +46,59 @@ PHRASES = [
      "A merge request without a reviewer is like a satellite without a ground station.",
 ]
 
+MR_NOT_FOUND_WITTY_REPLIES = [
+    "Merge request does not exist. Review your manners instead.",
+    "404: Merge request not found.",
+    "This MR is a myth, a legend, a pull request that never was.",
+    "No MR here. Maybe it went on a long vacation with the missing semicolons.",
+    "MR not found. Are you sure you didn't dream it?",
+    "Invalid MR link. The only thing to review is your copy-paste skills.",
+    "That merge request has left the repository. It's in a better place now.",
+    "Zero MRs found. Time to review your life choices.",
+    "This MR doesn't exist. But you know what does? Regret.",
+    "No merge request. Maybe it was just a merge suggestion whispered into the void.",
+    "MR not found. If it was a feature, it's a very hidden one.",
+    "I can't assign reviewers to nothing. Even I have standards.",
+]
 
 class ReviewAssignerHandler:
     # Cached bot identity to avoid API calls on every message
     _bot_full_name: Optional[str] = None
     _bot_user_id: Optional[int] = None
-    active_assignments: Dict[int, Dict[str, Any]] = {}
+    
+    group = None
+    reviewer_names = None
+
+    def _load_config(self, stream_name):
+        try:
+            with open(cfg_path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+        except FileNotFoundError:
+            logger.error("Members config file not found: %s", cfg_path)
+            return None
+        except Exception:
+            logger.exception("Failed to load members config: %s", cfg_path)
+            return None
+
+        # If config is a single list, use it for all streams
+        if isinstance(data, list):
+            try:
+                return [int(x) for x in data]
+            except Exception:
+                logger.exception("Invalid member IDs in members config list")
+                return None
+
+        # Expect mapping of stream -> list
+        if not isinstance(data, dict):
+            logger.error("Members config must be a dict or list: %s", type(data))
+            return None
+
+        reviewer_data = data.get(stream_name)
+
+        if reviewer_data is not None:
+            self.reviewer_names = reviewer_data.get("members")
+            self.group = gl.groups.get(reviewer_data.get("gitlab_group_id"), lazy=True)
+
 
     def _get_review_counts(self, bot_handler) -> Dict[int, int]:
             """Retrieve review counts from persistent storage."""
@@ -70,16 +123,25 @@ class ReviewAssignerHandler:
 
     def _save_last_reset_date(self, bot_handler, date: str) -> None:
         bot_handler.storage.put("last_reset_date", date)
+
+    def _gitlab_get_mr_list(self, return_open: bool, result_count: int=None):
+        if result_count is None:
+            return self.group.mergerequests.list(state=('opened' if return_open else "closed"), scope='all', draft=False, get_all=True)
+        else:
+            return self.group.mergerequests.list(state=('opened' if return_open else "closed"), scope='all', draft=False, get_all=False, per_page=result_count)
     
     def usage(self) -> str:
          return """
-            I randomly assign two stream members to review a merge request.
+            ReviewBot v2.0.
+            I help with merge request reviews. Automatically synced with Gitlab.
 
-            • **@ReviewBot assign title** - picks two random reviewers for *title*
-            • **@ReviewBot reviewed title** - lets me know that you reviewed *title*
-            • **@ReviewBot leaderboard - shows top reviewers (resets every month)
-            • **@ReviewBot list - lists merge requests to be reviewed
-                                """
+            • *@ReviewBot assign <link>* - picks two random reviewers for *link*
+            • *@ReviewBot assign <link> <usernames>* - assigns reviewers for *link*
+            • *@ReviewBot reviewed title* - lets me know that you reviewed *title*
+            • *@ReviewBot leaderboard* - shows top reviewers (resets every month)
+            • *@ReviewBot list* - lists 5 most recent active merge requests
+            • *@ReviewBot list n* - lists *n* most recent active merge requests
+                                            """
 
     def _init_identity(self, bot_handler: AbstractBotHandler) -> None:
         """Fetch and cache the bot's own full name and user ID."""
@@ -98,9 +160,9 @@ class ReviewAssignerHandler:
             logger.exception("Cannot initialize bot identity")
 
     def _get_reviewers(
-        self, client: zulip.Client, stream_name: str
+        self, client: zulip.Client, stream_name: str, reviewer_names: Dict[str] = None
     ) -> Optional[List[Dict]]:
-        """Load list of user IDs for `stream_name` from an external JSON file.
+        """Load list of user IDs for `stream_name` from a dict or an external JSON file.
 
         The JSON file should be a mapping of stream names to lists of user IDs, e.g.
         {
@@ -110,35 +172,11 @@ class ReviewAssignerHandler:
         The default file is `reviewers.json` next to this module. You
         can override it by setting the environment variable `REVIEWERS_FILE`.
         """
-        # Determine config path
-        cfg_path = os.environ.get(
-            "REVIEWERS_FILE",
-            os.path.join(os.path.dirname(__file__), "reviewers.json"),
-        )
-        try:
-            with open(cfg_path, "r", encoding="utf-8") as fh:
-                data = json.load(fh)
-        except FileNotFoundError:
-            logger.error("Members config file not found: %s", cfg_path)
-            return None
-        except Exception:
-            logger.exception("Failed to load members config: %s", cfg_path)
-            return None
 
-        # If config is a single list, use it for all streams
-        if isinstance(data, list):
-            try:
-                return [int(x) for x in data]
-            except Exception:
-                logger.exception("Invalid member IDs in members config list")
-                return None
+        if reviewer_names is None or len(reviewer_names) == 0:
+            self._load_config(stream_name)
+            reviewer_names = self.reviewer_names
 
-        # Expect mapping of stream -> list
-        if not isinstance(data, dict):
-            logger.error("Members config must be a dict or list: %s", type(data))
-            return None
-
-        reviewer_names = data.get(stream_name)
         if reviewer_names is None:
             logger.error("No member list for stream '%s' in %s", stream_name, cfg_path)
             return None
@@ -197,33 +235,26 @@ class ReviewAssignerHandler:
             with open("active_assignments.json") as fh:
                 self.active_assignments = json.load(fh)
 
+        stream_name = message.get("display_recipient")
+        self._load_config(stream_name)
+
+        mr_list_all = self._gitlab_get_mr_list(True)
+
         # # ---------- REVIEW CONFIRMATION ----------
         if cmd == "reviewed":
         #     parent_id = message.get("reply_to")
-            if len(content_data) < 2:
-                bot_handler.send_reply(message, "Please provide a merge request title. Example:\n"
-                                            "`@**ReviewAssigner** reviewed 73`")
+            if len(content_data) != 2:
+                bot_handler.send_reply(message, "Please provide a merge request link. Example:\n"
+                                            "`@**ReviewAssigner** reviewed <link>`")
                 return
 
             mr_title = content_data[1]
+            mr_id = mr_title.split("/")[-1]
+            mr_ids_all =  [str(mr.iid) for mr in mr_list_all]
 
-            if mr_title in self.active_assignments:
+            if mr_id in mr_ids_all:
                 sender_id = message.get("sender_id")
                 if sender_id:
-                    if sender_id in self.active_assignments[mr_title]["reviewed_by"]:
-                        bot_handler.send_reply(message, "You have already reviewed this MR. Let's hear a second opinion.")
-                        return
-                    self.active_assignments[mr_title]["reviewed_by"].append(sender_id)
-
-                    ready_to_merge = False
-
-                    if len(self.active_assignments[mr_title]["reviewed_by"]) == 2:
-                        del self.active_assignments[mr_title]
-                        ready_to_merge = True
-
-                    with open("active_assignments.json", "w") as fh:
-                        json.dump(self.active_assignments, fh)
-
                     counts = self._get_review_counts(bot_handler)
                     counts[str(sender_id)] = counts.get(str(sender_id), 0) + 1
                     self._save_review_counts(bot_handler, counts)
@@ -236,31 +267,35 @@ class ReviewAssignerHandler:
 
                     bot_handler.send_reply(
                         message,
-                        f"✅ Thanks @_**{name}** for reviewing **{mr_title}**! "
+                        f"✅ Thanks @**{name}** for reviewing [{mr_title.split("/")[-1]}]({mr_title})! "
                         f"(You now have {counts[str(sender_id)]} review{'s' if counts[str(sender_id)] != 1 else ''})"
                     )
-                    if ready_to_merge:
-                        bot_handler.send_reply(message, f"MR {mr_title}: ready to merge")
                 else:
                     bot_handler.send_reply(message, "Could not identify you, sorry")
             else:
-                bot_handler.send_reply(message, "Merge request does not exist. Review your manners instead.")
+                bot_handler.send_reply(message, random.choice(MR_NOT_FOUND_WITTY_REPLIES))
             return
 
         # ---------- LEADERBOARD ----------
         if cmd == "leaderboard":
-            stream_name = message.get("display_recipient")
             self._show_leaderboard(message, bot_handler, stream_name)
             return
        
         if cmd == "assign":
 
             if len(content_data) < 2:
-                bot_handler.send_reply(message, "Please provide a merge request id. Example:\n"
-                                            "`@**ReviewAssigner** assign 73`")
+                bot_handler.send_reply(message, "Please provide a merge request link. Example:\n"
+                                            "`@ReviewAssigner assign <link>`")
                 return
 
             mr_title = content_data[1]
+            mr_id = mr_title.split("/")[-1]
+            mr_ids_all =  [str(mr.iid) for mr in mr_list_all]
+            if mr_id not in mr_ids_all:
+                bot_handler.send_reply(message, random.choice(MR_NOT_FOUND_WITTY_REPLIES))
+                return
+
+            requested_reviewers = content_data[2:]
 
             # Get stream and topic where we were called
             stream_name = message.get("display_recipient")
@@ -269,7 +304,7 @@ class ReviewAssignerHandler:
                 return
 
             # Fetch subscribers of this stream
-            members = self._get_reviewers(client, stream_name)
+            members = self._get_reviewers(client, stream_name, requested_reviewers)
             if not members:
                 bot_handler.send_reply(
                     message,
@@ -281,28 +316,19 @@ class ReviewAssignerHandler:
             exclude = {self._bot_user_id} if self._bot_user_id is not None else set()
             if message.get("sender_id") and message["sender_id"] != self._bot_user_id:
                 exclude.add(message["sender_id"])
-
+                
             chosen = self._pick_two(members, exclude)
             if not chosen:
                 bot_handler.send_reply(message, "Nobody eligible to pick - everyone is excluded.")
                 return
 
-            # Silent mentions using user IDs
             mentions = " ".join(f"@_**{m["full_name"]}**" for m in chosen)
             ps = random.choice(PHRASES)
-            reply = f"Reviewers for **{mr_title}**: {mentions}\n*{ps}*"
+            reply = f"Reviewers for [#{mr_title.split("/")[-1]}]({mr_title}): {mentions}\n*{ps}*"
+
+            self.update_mr_reviewers()
 
             resp = bot_handler.send_reply(message, reply)
-            self.active_assignments[mr_title] = {
-                    "assigned": [m["user_id"] for m in chosen],
-                    "stream": stream_name,
-                    "mr_title": mr_title,
-                    "topic": message.get("subject", ""),
-                    "reviewed_by": []
-            }
-
-            with open("active_assignments.json", "w") as fh:
-                json.dump(self.active_assignments, fh)
             return
         
         if cmd == "list":
@@ -355,32 +381,35 @@ class ReviewAssignerHandler:
             entries.append(entry)
         return entries
 
-    def send_active_merge_requests(self, message, bot_handler) -> None:
+    def send_active_merge_requests(self, message, bot_handler, result_count: int = 5) -> None:
         """Send a human-readable list of active merge requests as a reply to `message`."""
-        entries = self.get_active_merge_requests()
-        if not entries:
+
+        some_open_mrs = self._gitlab_get_mr_list(True, result_count)
+        
+        if not some_open_mrs:
             bot_handler.send_reply(message, "No active merge requests.")
             return
 
         client = bot_handler._client
         lines = ["**Active Merge Requests**", ""]
-        for e in entries:
-            assigned = e.get("assigned", [])
+        for e in some_open_mrs:
+            assigned = e.reviewers
             names = []
-            for uid in assigned:
-                try:
-                    user = client.get_user_by_id(int(uid))
-                    if user.get("result") == "success":
-                        names.append(user["user"]["full_name"])
-                    else:
-                        names.append(f"User {uid}")
-                except Exception:
-                    names.append(f"User {uid}")
+            for user in assigned:
+                    names.append(user.name)
             name_str = ", ".join(names) if names else "(no one assigned)"
-            stream = e.get("stream", "")
-            lines.append(f"- **{e.get('mr_title')}**: {name_str}")
+            lines.append(f"- [{e.get('mr_title').split("/")[-1]}]({e.get('mr_title')}): {name_str}")
 
         bot_handler.send_reply(message, "\n".join(lines))
+
+    def update_mr_reviewers(self, mr, pr, reviewers: List[str]):
+        editable_mr = pr.mergerequests.get(mr.iid)
+        reviewer_ids = []
+        # TODO: cache ids
+        for name in reviewers:
+            reviewer_ids.append(gl.users.list(search=name, get_all=True)[0].id)
+        editable_mr.reviewer_ids = reviewer_ids
+        result = editable_mr.save()
 
 
 handler_class = ReviewAssignerHandler
