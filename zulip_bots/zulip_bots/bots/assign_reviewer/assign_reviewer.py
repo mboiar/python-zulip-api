@@ -325,10 +325,12 @@ class ReviewAssignerHandler:
                 return
 
             mentions = " ".join(f"@_**{m["full_name"]}**" for m in chosen)
+            names = [m["full_name"] for m in chosen]
             ps = random.choice(PHRASES)
             reply = f"Reviewers for [#{mr_title.split("/")[-1]}]({mr_title}): {mentions}\n*{ps}*"
 
-            self.update_mr_reviewers()
+            mr = self.group.mergerequests.get(mr_id)
+            self.update_mr_reviewers(mr, names)
 
             resp = bot_handler.send_reply(message, reply)
             return
@@ -407,8 +409,9 @@ class ReviewAssignerHandler:
 
         bot_handler.send_reply(message, "\n".join(lines))
 
-    def update_mr_reviewers(self, mr, pr, reviewers: List[str]):
-        editable_mr = pr.mergerequests.get(mr.iid)
+    def update_mr_reviewers(self, mr, reviewers: List[str]):
+        pr = gl.projects.get(mr.project_id, lazy=True)
+        editable_mr = pr.mergerequests.get(mr.iid, lazy=True)
         reviewer_ids = []
         # TODO: cache ids
         for name in reviewers:
