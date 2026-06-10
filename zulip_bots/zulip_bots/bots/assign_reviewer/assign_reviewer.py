@@ -399,7 +399,7 @@ class ReviewAssignerHandler:
             assigned = e.reviewers
             names = []
             for user in assigned:
-                    names.append(user.name)
+                    names.append(user["name"])
             name_str = ", ".join(names) if names else "(no one assigned)"
             lines.append(f"- [{e.title}]({e.web_url}): {name_str}")
 
