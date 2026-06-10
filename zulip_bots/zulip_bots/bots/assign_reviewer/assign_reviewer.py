@@ -398,7 +398,7 @@ class ReviewAssignerHandler:
             for user in assigned:
                     names.append(user.name)
             name_str = ", ".join(names) if names else "(no one assigned)"
-            lines.append(f"- [{e.get('mr_title').split("/")[-1]}]({e.get('mr_title')}): {name_str}")
+            lines.append(f"- [{e.title}]({e.web_url}): {name_str}")
 
         bot_handler.send_reply(message, "\n".join(lines))
 
