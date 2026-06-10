@@ -289,7 +289,7 @@ class ReviewAssignerHandler:
                                             "`@ReviewAssigner assign <link>`")
                 return
 
-            payload = content_data.split(" ", maxsplit=1)
+            payload = content_data[1].split(" ", maxsplit=1)
             mr_title = payload[0]
             mr_id = mr_title.split("/")[-1]
             mr_ids_all =  [str(mr.iid) for mr in mr_list_all]
