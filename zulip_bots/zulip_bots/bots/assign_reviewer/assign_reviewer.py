@@ -337,7 +337,7 @@ class ReviewAssignerHandler:
         
         if cmd == "list":
             result_count = None
-            if len(content_data) > 1 and isinstance(content_data[1], int):
+            if len(content_data) > 1 and content_data[1].isdigit():
                 result_count = content_data[1]
             self.send_active_merge_requests(message, bot_handler, result_count)
             return
