@@ -329,7 +329,7 @@ class ReviewAssignerHandler:
             ps = random.choice(PHRASES)
             reply = f"Reviewers for [#{mr_title.split("/")[-1]}]({mr_title}): {mentions}\n*{ps}*"
 
-            mr = self.group.mergerequests.get(mr_id)
+            mr = next(x for x in mr_list_all if x.iid == mr_id)
             self.update_mr_reviewers(mr, names)
 
             resp = bot_handler.send_reply(message, reply)
