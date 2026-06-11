@@ -10,7 +10,10 @@ import zulip
 from zulip_bots.lib import AbstractBotHandler
 import gitlab
 
-__version__ = "1.0.0"
+from utils import REVIEW_REPLIES, MR_NOT_FOUND_REPLIES, NOBODY_ELIGIBLE_REPLIES
+
+
+__version__ = "2.0.0"
 
 logger = logging.getLogger(__name__)
 gl = gitlab.Gitlab.from_config("satlab", ["python-gitlab.cfg"])
@@ -19,48 +22,6 @@ cfg_path = os.environ.get(
             os.path.join(os.path.dirname(__file__), "reviewers.json"),
         )
 
-PHRASES = [
-    "Review responsibly. No dark side stuff.",
-    "You two were chosen by the almighty RNG. Blame the universe.",
-    "The prophecy foretold of this pairing.",
-    "You're the lucky winners of today's review lottery!",
-    "Don't worry, the bugs are afraid of you. Probably.",
-    "The random number gods have spoken.",
-    "You're the chosen ones. There's no escape.",
-    "Good luck. You'll need it (just kidding… maybe).",
-    "I promise this isn't a punishment.",
-    "This is the way.",
-    "Remember, with great reviewing power comes great responsibility.",
-    "Brace yourselves, merge requests are coming.",
-    "I've got a good feeling about this pairing.",
-    "May your comments be constructive and your coffee strong.",
-    "You two, together, can break any build!",
-    "This match was made in developer heaven.",
-    "If you don't review, I'll assign you again tomorrow.",
-    "The bot has spoken. Resistance is futile.",
-    "This pairing was blessed by a passing cosmic ray.",
-    "Don't make me assign the cat. She only types 'meow'.",
-    "You've been volunteered! Congratulations.",
-    "May your comments be witty and your merge conflicts few.",
-    "Telemetry shows both of you are online. Resistance is futile.",
-    "The tumbling space potato of fate has landed on you.",
-     "A merge request without a reviewer is like a satellite without a ground station.",
-]
-
-MR_NOT_FOUND_WITTY_REPLIES = [
-    "Merge request does not exist. Review your manners instead.",
-    "404: Merge request not found.",
-    "This MR is a myth, a legend, a pull request that never was.",
-    "No MR here. Maybe it went on a long vacation with the missing semicolons.",
-    "MR not found. Are you sure you didn't dream it?",
-    "Invalid MR link. The only thing to review is your copy-paste skills.",
-    "That merge request has left the repository. It's in a better place now.",
-    "Zero MRs found. Time to review your life choices.",
-    "This MR doesn't exist. But you know what does? Regret.",
-    "No merge request. Maybe it was just a merge suggestion whispered into the void.",
-    "MR not found. If it was a feature, it's a very hidden one.",
-    "I can't assign reviewers to nothing. Even I have standards.",
-]
 
 class ReviewAssignerHandler:
     # Cached bot identity to avoid API calls on every message
@@ -275,7 +236,7 @@ class ReviewAssignerHandler:
                 else:
                     bot_handler.send_reply(message, "Could not identify you, sorry")
             else:
-                bot_handler.send_reply(message, random.choice(MR_NOT_FOUND_WITTY_REPLIES))
+                bot_handler.send_reply(message, random.choice(MR_NOT_FOUND_REPLIES))
             return
 
         # ---------- LEADERBOARD ----------
@@ -295,11 +256,11 @@ class ReviewAssignerHandler:
             try:
                 mr_id = int(mr_title.split("/")[-1])
             except Exception as e:
-                bot_handler.send_reply(message, random.choice(MR_NOT_FOUND_WITTY_REPLIES))
+                bot_handler.send_reply(message, random.choice(MR_NOT_FOUND_REPLIES))
                 return
             mr_ids_all =  [mr.iid for mr in mr_list_all]
             if mr_id not in mr_ids_all:
-                bot_handler.send_reply(message, random.choice(MR_NOT_FOUND_WITTY_REPLIES))
+                bot_handler.send_reply(message, random.choice(MR_NOT_FOUND_REPLIES))
                 return
 
             requested_reviewers = re.findall(r"@\*\*(.+?)\*\*", payload[1])
@@ -315,7 +276,7 @@ class ReviewAssignerHandler:
             if not members:
                 bot_handler.send_reply(
                     message,
-                    "Sorry, I couldn't fetch the subscriber list of this stream."
+                    random.choice(NOBODY_ELIGIBLE_REPLIES)
                 )
                 return
 
@@ -326,13 +287,13 @@ class ReviewAssignerHandler:
                 
             chosen = self._pick_two(members, exclude)
             if not chosen:
-                bot_handler.send_reply(message, "Nobody eligible to pick - everyone is excluded.")
+                bot_handler.send_reply(message, random.choice(NOBODY_ELIGIBLE_REPLIES))
                 return
 
             mr = next(x for x in mr_list_all if x.iid == mr_id)
             mentions = " ".join(f"@_**{m["full_name"]}**" for m in chosen)
             names = [m["full_name"] for m in chosen]
-            ps = random.choice(PHRASES)
+            ps = random.choice(REVIEW_REPLIES)
             reply = f"Reviewers for [{mr.title}]({mr.web_url}): {mentions}\n*{ps}*"
 
             self.update_mr_reviewers(mr, names)
