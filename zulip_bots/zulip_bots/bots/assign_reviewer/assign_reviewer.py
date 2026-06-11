@@ -324,12 +324,12 @@ class ReviewAssignerHandler:
                 bot_handler.send_reply(message, "Nobody eligible to pick - everyone is excluded.")
                 return
 
+            mr = next(x for x in mr_list_all if x.iid == mr_id)
             mentions = " ".join(f"@**{m["full_name"]}**" for m in chosen)
             names = [m["full_name"] for m in chosen]
             ps = random.choice(PHRASES)
-            reply = f"Reviewers for [#{mr_title.split("/")[-1]}]({mr_title}): {mentions}\n*{ps}*"
+            reply = f"Reviewers for [{mr.title}]({mr.web_url}): {mentions}\n*{ps}*"
 
-            mr = next(x for x in mr_list_all if x.iid == mr_id)
             self.update_mr_reviewers(mr, names)
 
             resp = bot_handler.send_reply(message, reply)
