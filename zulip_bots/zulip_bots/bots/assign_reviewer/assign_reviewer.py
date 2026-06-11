@@ -140,7 +140,7 @@ class ReviewAssignerHandler:
             • **@ReviewBot assign <link|id> @**<username1>** ...** - assigns reviewers for **link**
             • **@ReviewBot reviewed <link|id>** - lets me know that you reviewed **link**
             • **@ReviewBot leaderboard** - shows top reviewers (resets every month)
-            • **@ReviewBot list** - lists 5 most recent active merge requests
+            • **@ReviewBot list** - lists active merge requests
             • **@ReviewBot list n** - lists **n** most recent active merge requests
                                             """
 
