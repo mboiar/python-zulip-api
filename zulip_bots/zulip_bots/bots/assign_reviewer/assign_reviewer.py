@@ -194,6 +194,7 @@ class ReviewAssignerHandler:
             logger.exception("Exception fetching stream subscribers")
             return None
 
+        print(reviewer_names)
         return [usr for usr in all_members if usr["full_name"] in reviewer_names]
 
     def _pick_two(self, members: List[Dict], exclude: Set[int]) -> List[int]:
@@ -329,7 +330,7 @@ class ReviewAssignerHandler:
                 return
 
             mr = next(x for x in mr_list_all if x.iid == mr_id)
-            mentions = " ".join(f"@**{m["full_name"]}**" for m in chosen)
+            mentions = " ".join(f"@_**{m["full_name"]}**" for m in chosen)
             names = [m["full_name"] for m in chosen]
             ps = random.choice(PHRASES)
             reply = f"Reviewers for [{mr.title}]({mr.web_url}): {mentions}\n*{ps}*"
