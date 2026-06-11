@@ -291,7 +291,7 @@ class ReviewAssignerHandler:
                 return
 
             mr = next(x for x in mr_list_all if x.iid == mr_id)
-            mentions = " ".join(f"@_**{m["full_name"]}**" for m in chosen)
+            mentions = " ".join(f"@**{m["full_name"]}**" for m in chosen)
             names = [m["full_name"] for m in chosen]
             ps = random.choice(REVIEW_REPLIES)
             reply = f"Reviewers for [{mr.title}]({mr.web_url}): {mentions}\n*{ps}*"
