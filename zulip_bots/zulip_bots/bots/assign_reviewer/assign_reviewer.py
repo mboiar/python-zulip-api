@@ -174,7 +174,7 @@ class ReviewAssignerHandler:
         can override it by setting the environment variable `REVIEWERS_FILE`.
         """
 
-        if reviewer_names is None or len(reviewer_names) == 0:
+        if reviewer_names is None:
             self._load_config(stream_name)
             reviewer_names = self.reviewer_names
 
