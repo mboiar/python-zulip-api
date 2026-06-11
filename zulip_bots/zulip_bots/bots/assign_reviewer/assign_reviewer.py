@@ -136,12 +136,12 @@ class ReviewAssignerHandler:
             ReviewBot v2.0.
             I help with merge request reviews. Automatically synced with Gitlab.
 
-            • *@ReviewBot assign <link>* - picks two random reviewers for *link*
-            • *@ReviewBot assign <link> <usernames>* - assigns reviewers for *link*
-            • *@ReviewBot reviewed title* - lets me know that you reviewed *title*
-            • *@ReviewBot leaderboard* - shows top reviewers (resets every month)
-            • *@ReviewBot list* - lists 5 most recent active merge requests
-            • *@ReviewBot list n* - lists *n* most recent active merge requests
+            • **@ReviewBot assign <link|id>** - picks two random reviewers for **link**
+            • **@ReviewBot assign <link|id> @**<username1>** ...** - assigns reviewers for **link**
+            • **@ReviewBot reviewed <link|id>** - lets me know that you reviewed **link**
+            • **@ReviewBot leaderboard** - shows top reviewers (resets every month)
+            • **@ReviewBot list** - lists 5 most recent active merge requests
+            • **@ReviewBot list n** - lists **n** most recent active merge requests
                                             """
 
     def _init_identity(self, bot_handler: AbstractBotHandler) -> None:
@@ -324,7 +324,7 @@ class ReviewAssignerHandler:
                 bot_handler.send_reply(message, "Nobody eligible to pick - everyone is excluded.")
                 return
 
-            mentions = " ".join(f"@_**{m["full_name"]}**" for m in chosen)
+            mentions = " ".join(f"@**{m["full_name"]}**" for m in chosen)
             names = [m["full_name"] for m in chosen]
             ps = random.choice(PHRASES)
             reply = f"Reviewers for [#{mr_title.split("/")[-1]}]({mr_title}): {mentions}\n*{ps}*"
@@ -339,6 +339,8 @@ class ReviewAssignerHandler:
             result_count = None
             if len(content_data) > 1 and content_data[1].isdigit():
                 result_count = content_data[1]
+                print(result_count)
+            print(result_count)
             self.send_active_merge_requests(message, bot_handler, result_count)
             return
 
@@ -404,7 +406,7 @@ class ReviewAssignerHandler:
             names = []
             for user in assigned:
                     names.append(user["name"])
-            name_str = ", ".join(names) if names else "(no one assigned)"
+            name_str = ", ".join(names) if names else "(no reviewers)"
             lines.append(f"- [{e.title}]({e.web_url}): {name_str}")
 
         bot_handler.send_reply(message, "\n".join(lines))
