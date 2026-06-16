@@ -1,5 +1,6 @@
 from typing import Any, Dict, Optional, List, Set
 import random
+import secrets
 import logging
 import json
 import os
@@ -244,7 +245,7 @@ class ReviewAssignerHandler:
                 else:
                     bot_handler.send_reply(message, "Could not identify you, sorry")
             else:
-                bot_handler.send_reply(message, random.choice(MR_NOT_FOUND_REPLIES))
+                bot_handler.send_reply(message, secrets.choice(MR_NOT_FOUND_REPLIES))
             return
 
         # ---------- LEADERBOARD ----------
@@ -264,11 +265,11 @@ class ReviewAssignerHandler:
             try:
                 mr_id = int(mr_title.split("/")[-1])
             except Exception as e:
-                bot_handler.send_reply(message, random.choice(MR_NOT_FOUND_REPLIES))
+                bot_handler.send_reply(message, secrets.choice(MR_NOT_FOUND_REPLIES))
                 return
             mr_ids_all =  [mr.iid for mr in mr_list_all]
             if mr_id not in mr_ids_all:
-                bot_handler.send_reply(message, random.choice(MR_NOT_FOUND_REPLIES))
+                bot_handler.send_reply(message, secrets.choice(MR_NOT_FOUND_REPLIES))
                 return
 
             requested_reviewers = []
@@ -286,7 +287,7 @@ class ReviewAssignerHandler:
             if not members:
                 bot_handler.send_reply(
                     message,
-                    random.choice(NOBODY_ELIGIBLE_REPLIES)
+                    secrets.choice(NOBODY_ELIGIBLE_REPLIES)
                 )
                 return
 
@@ -297,13 +298,13 @@ class ReviewAssignerHandler:
                 
             chosen = self._pick_two(members, exclude)
             if not chosen:
-                bot_handler.send_reply(message, random.choice(NOBODY_ELIGIBLE_REPLIES))
+                bot_handler.send_reply(message, secrets.choice(NOBODY_ELIGIBLE_REPLIES))
                 return
 
             mr = next(x for x in mr_list_all if x.iid == mr_id)
             mentions = " ".join(f"@**{m["full_name"]}**" for m in chosen)
             names = [m["full_name"] for m in chosen]
-            ps = random.choice(REVIEW_REPLIES)
+            ps = secrets.choice(REVIEW_REPLIES)
             reply = f"Reviewers for [{mr.title}]({mr.web_url}): {mentions}\n*{ps}*"
 
             self.update_mr_reviewers(mr, names)
@@ -395,6 +396,7 @@ class ReviewAssignerHandler:
         for name in reviewers:
             reviewer_ids.append(gl.users.list(search=name, get_all=True)[0].id)
         editable_mr.reviewer_ids = reviewer_ids
+        print(reviewer_ids,reviewers)
         result = editable_mr.save()
 
 
