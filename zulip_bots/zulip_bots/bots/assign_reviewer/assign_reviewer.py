@@ -135,11 +135,11 @@ class ReviewAssignerHandler:
         can override it by setting the environment variable `REVIEWERS_FILE`.
         """
 
-        if reviewer_names is None:
+        if reviewer_names is None or len(reviewer_names) == 0:
             self._load_config(stream_name)
             reviewer_names = self.reviewer_names
 
-        if reviewer_names is None:
+        if reviewer_names is None or len(reviewer_names) == 0:
             logger.error("No member list for stream '%s' in %s", stream_name, cfg_path)
             return None
         
@@ -228,9 +228,17 @@ class ReviewAssignerHandler:
                     except Exception:
                         name = f"User {sender_id}"
 
+                    try:
+                        mr = next(x for x in mr_list_all if x.iid == mr_id)
+                        title = mr.title
+                        url = mr.web_url
+                    except Exception as e:
+                        title = mr_title
+                        url = ""
+
                     bot_handler.send_reply(
                         message,
-                        f"✅ Thanks @**{name}** for reviewing [{mr_title.split("/")[-1]}]({mr_title})! "
+                        f"✅ Thanks @**{name}** for reviewing [{title}]({url})! "
                         f"(You now have {counts[str(sender_id)]} review{'s' if counts[str(sender_id)] != 1 else ''})"
                     )
                 else:
@@ -263,7 +271,9 @@ class ReviewAssignerHandler:
                 bot_handler.send_reply(message, random.choice(MR_NOT_FOUND_REPLIES))
                 return
 
-            requested_reviewers = re.findall(r"@\*\*(.+?)\*\*", payload[1])
+            requested_reviewers = []
+            if len(payload) > 1:
+                requested_reviewers = re.findall(r"@\*\*(.+?)\*\*", payload[1])
 
             # Get stream and topic where we were called
             stream_name = message.get("display_recipient")
